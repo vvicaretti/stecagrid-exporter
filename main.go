@@ -3,42 +3,90 @@ package main
 import (
 	"crypto/tls"
 	"encoding/xml"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const namespace = "stecagrid"
-
 var (
-	tr = &http.Transport{
+	stecaIP   = "192.168.50.144"
+	stecaPath = "/measurements.xml"
+	namespace = "stecagrid"
+	tr        = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
-	client    = &http.Client{Transport: tr}
-	frequency = 5
-
-	listenAddress = flag.String("web.listen-address", ":9141",
-		"Address to listen on for telemetry")
-	metricsPath = flag.String("web.telemetry-path", "/metrics",
-		"Path under which to expose metrics")
-
+	httpClientTimeout = time.Duration(3 * time.Second)
+	httpClient        = &http.Client{
+		Transport: tr,
+		Timeout:   httpClientTimeout,
+	}
+	frequency = 10
 	// StecaGrid Metrics
-	acPower = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "", "ac_power"),
-		"How many messages have been received (per channel).",
-		[]string{"channel"}, nil,
-	)
-	acVoltage = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "", "ac_voltage"),
-		"How many messages have been filtered (per channel).",
-		[]string{"channel"}, nil,
-	)
-	// more metrics...
+	acPower = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ac_power",
+			Help:      "AC Power (W)",
+		})
+
+	acCurrent = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ac_current",
+			Help:      "AC Current (A)",
+		})
+
+	temperature = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "temp",
+			Help:      "Temperature (°C)",
+		})
+	acVoltage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ac_voltage",
+			Help:      "AC Voltage (V)",
+		})
+	acFrequency = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ac_frequency",
+			Help:      "AC Frequency (Hz)",
+		})
+	gridPower = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "grid_power",
+			Help:      "Grid Power (W)",
+		})
+
+	dcVoltage = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "dc_voltage",
+			Help:      "DC Voltage (V)",
+		})
+
+	dcCurrent = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "dc_current",
+			Help:      "DC Current (A)",
+		})
+
+	derating = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "derating",
+			Help:      "Derating (%)",
+		})
 )
 
 /* Example of output from http://<stecagrid-ip>/measurements.xml
@@ -86,6 +134,24 @@ type stecaGrid struct {
 	} `xml:"Device"`
 }
 
+func setupPrometheus() {
+	prometheus.MustRegister(acPower)
+	prometheus.MustRegister(acVoltage)
+	prometheus.MustRegister(dcVoltage)
+	prometheus.MustRegister(acCurrent)
+	prometheus.MustRegister(dcCurrent)
+	prometheus.MustRegister(acFrequency)
+	prometheus.MustRegister(temperature)
+	prometheus.MustRegister(gridPower)
+	prometheus.MustRegister(derating)
+	go func() {
+		for {
+			http.Handle("/metrics", promhttp.Handler())
+			log.Fatal(http.ListenAndServe(":9101", nil))
+		}
+	}()
+}
+
 func getXML(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
@@ -93,33 +159,75 @@ func getXML(url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return []byte{}, fmt.Errorf("Status error: %v", resp.StatusCode)
+		return []byte{}, fmt.Errorf("status error: %v", resp.StatusCode)
 	}
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return []byte{}, fmt.Errorf("Read body: %v", err)
+		return []byte{}, fmt.Errorf("read body: %v", err)
 	}
 
 	return data, nil
 }
 
 func main() {
-	// http.Handle("/metrics", promhttp.Handler())
-	// log.Fatal(http.ListenAndServe(":9101", nil))
+	setupPrometheus()
+
+	stecaURL := "http://" + stecaIP + stecaPath
 
 	for {
-		if xmlBytes, err := getXML("http://192.168.50.144/measurements.xml"); err != nil {
+		if xmlBytes, err := getXML(stecaURL); err != nil {
 			log.Printf("Failed to get XML: %v", err)
 		} else {
 			var results stecaGrid
-			err = xml.Unmarshal(xmlBytes, &results)
-			if err != nil {
-				log.Fatalf("xml.Unmarshal failed with '%s'\n", err)
+			if err := xml.Unmarshal(xmlBytes, &results); err != nil {
+				log.Fatal(err)
 			}
-			fmt.Println(results.Device.Measurements.Measurement[0].Value)
-
-			// TODO ingest prometheus metrics
+			// AC Power
+			intPower, err := strconv.ParseFloat(results.Device.Measurements.Measurement[2].Value, 64)
+			if err == nil {
+				acPower.Set(intPower)
+			}
+			// AC Voltage
+			intACVoltage, err := strconv.ParseFloat(results.Device.Measurements.Measurement[0].Value, 64)
+			if err == nil {
+				acVoltage.Set(intACVoltage)
+			}
+			// AC Frequency
+			intFrequency, err := strconv.ParseFloat(results.Device.Measurements.Measurement[3].Value, 64)
+			if err == nil {
+				acFrequency.Set(intFrequency)
+			}
+			// AC Current
+			intACCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[1].Value, 64)
+			if err == nil {
+				acFrequency.Set(intACCurrent)
+			}
+			// DC Current
+			intDCCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[5].Value, 64)
+			if err == nil {
+				dcCurrent.Set(intDCCurrent)
+			}
+			// GridPower
+			intGridPower, err := strconv.ParseFloat(results.Device.Measurements.Measurement[7].Value, 64)
+			if err == nil {
+				acFrequency.Set(intGridPower)
+			}
+			// Derating
+			intDerating, err := strconv.ParseFloat(results.Device.Measurements.Measurement[8].Value, 64)
+			if err == nil {
+				acFrequency.Set(intDerating)
+			}
+			// DC Voltage
+			intDCVoltage, err := strconv.ParseFloat(results.Device.Measurements.Measurement[4].Value, 64)
+			if err == nil {
+				acFrequency.Set(intDCVoltage)
+			}
+			// Temp
+			intTemp, err := strconv.ParseFloat(results.Device.Measurements.Measurement[6].Value, 64)
+			if err == nil {
+				acFrequency.Set(intTemp)
+			}
 
 		}
 		time.Sleep(time.Second * time.Duration(frequency))
