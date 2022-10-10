@@ -158,13 +158,14 @@ func getXML(url string) ([]byte, error) {
 		return []byte{}, fmt.Errorf("GET error: %v", err)
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return []byte{}, fmt.Errorf("status error: %v", resp.StatusCode)
 	}
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return []byte{}, fmt.Errorf("read body: %v", err)
+		return []byte{}, fmt.Errorf("read body error: %v", err)
 	}
 
 	return data, nil
@@ -201,7 +202,7 @@ func main() {
 			// AC Current
 			intACCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[1].Value, 64)
 			if err == nil {
-				acFrequency.Set(intACCurrent)
+				acCurrent.Set(intACCurrent)
 			}
 			// DC Current
 			intDCCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[5].Value, 64)
@@ -211,22 +212,22 @@ func main() {
 			// GridPower
 			intGridPower, err := strconv.ParseFloat(results.Device.Measurements.Measurement[7].Value, 64)
 			if err == nil {
-				acFrequency.Set(intGridPower)
+				gridPower.Set(intGridPower)
 			}
 			// Derating
 			intDerating, err := strconv.ParseFloat(results.Device.Measurements.Measurement[8].Value, 64)
 			if err == nil {
-				acFrequency.Set(intDerating)
+				derating.Set(intDerating)
 			}
 			// DC Voltage
 			intDCVoltage, err := strconv.ParseFloat(results.Device.Measurements.Measurement[4].Value, 64)
 			if err == nil {
-				acFrequency.Set(intDCVoltage)
+				dcVoltage.Set(intDCVoltage)
 			}
 			// Temp
 			intTemp, err := strconv.ParseFloat(results.Device.Measurements.Measurement[6].Value, 64)
 			if err == nil {
-				acFrequency.Set(intTemp)
+				temperature.Set(intTemp)
 			}
 
 		}
