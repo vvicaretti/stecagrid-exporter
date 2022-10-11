@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -27,6 +26,7 @@ var (
 		Timeout:   httpClientTimeout,
 	}
 	frequency = 10
+
 	// StecaGrid Metrics
 	acPower = prometheus.NewGauge(
 		prometheus.GaugeOpts{
@@ -34,14 +34,12 @@ var (
 			Name:      "ac_power",
 			Help:      "AC Power (W)",
 		})
-
 	acCurrent = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "ac_current",
 			Help:      "AC Current (A)",
 		})
-
 	temperature = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -66,21 +64,18 @@ var (
 			Name:      "grid_power",
 			Help:      "Grid Power (W)",
 		})
-
 	dcVoltage = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "dc_voltage",
 			Help:      "DC Voltage (V)",
 		})
-
 	dcCurrent = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "dc_current",
 			Help:      "DC Current (A)",
 		})
-
 	derating = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Namespace: namespace,
@@ -125,10 +120,10 @@ type stecaGrid struct {
 		Measurements struct {
 			Text        string `xml:",chardata"`
 			Measurement []struct {
-				Text  string `xml:",chardata"`
-				Value string `xml:"Value,attr"`
-				Unit  string `xml:"Unit,attr"`
-				Type  string `xml:"Type,attr"`
+				Text  string  `xml:",chardata"`
+				Value float64 `xml:"Value,attr"`
+				Unit  string  `xml:"Unit,attr"`
+				Type  string  `xml:"Type,attr"`
 			} `xml:"Measurement"`
 		} `xml:"Measurements"`
 	} `xml:"Device"`
@@ -184,51 +179,15 @@ func main() {
 			if err := xml.Unmarshal(xmlBytes, &results); err != nil {
 				log.Fatal(err)
 			}
-			// AC Power
-			intPower, err := strconv.ParseFloat(results.Device.Measurements.Measurement[2].Value, 64)
-			if err == nil {
-				acPower.Set(intPower)
-			}
-			// AC Voltage
-			intACVoltage, err := strconv.ParseFloat(results.Device.Measurements.Measurement[0].Value, 64)
-			if err == nil {
-				acVoltage.Set(intACVoltage)
-			}
-			// AC Frequency
-			intFrequency, err := strconv.ParseFloat(results.Device.Measurements.Measurement[3].Value, 64)
-			if err == nil {
-				acFrequency.Set(intFrequency)
-			}
-			// AC Current
-			intACCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[1].Value, 64)
-			if err == nil {
-				acCurrent.Set(intACCurrent)
-			}
-			// DC Current
-			intDCCurrent, err := strconv.ParseFloat(results.Device.Measurements.Measurement[5].Value, 64)
-			if err == nil {
-				dcCurrent.Set(intDCCurrent)
-			}
-			// GridPower
-			intGridPower, err := strconv.ParseFloat(results.Device.Measurements.Measurement[7].Value, 64)
-			if err == nil {
-				gridPower.Set(intGridPower)
-			}
-			// Derating
-			intDerating, err := strconv.ParseFloat(results.Device.Measurements.Measurement[8].Value, 64)
-			if err == nil {
-				derating.Set(intDerating)
-			}
-			// DC Voltage
-			intDCVoltage, err := strconv.ParseFloat(results.Device.Measurements.Measurement[4].Value, 64)
-			if err == nil {
-				dcVoltage.Set(intDCVoltage)
-			}
-			// Temp
-			intTemp, err := strconv.ParseFloat(results.Device.Measurements.Measurement[6].Value, 64)
-			if err == nil {
-				temperature.Set(intTemp)
-			}
+			acVoltage.Set(results.Device.Measurements.Measurement[0].Value)
+			acCurrent.Set(results.Device.Measurements.Measurement[1].Value)
+			acPower.Set(results.Device.Measurements.Measurement[2].Value)
+			acFrequency.Set(results.Device.Measurements.Measurement[3].Value)
+			dcVoltage.Set(results.Device.Measurements.Measurement[4].Value)
+			dcCurrent.Set(results.Device.Measurements.Measurement[5].Value)
+			temperature.Set(results.Device.Measurements.Measurement[6].Value)
+			gridPower.Set(results.Device.Measurements.Measurement[7].Value)
+			derating.Set(results.Device.Measurements.Measurement[8].Value)
 
 		}
 		time.Sleep(time.Second * time.Duration(frequency))
