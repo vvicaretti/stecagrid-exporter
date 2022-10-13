@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/tls"
 	"encoding/xml"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -14,8 +15,8 @@ import (
 )
 
 var (
-	stecaIP   = "192.168.50.144"
-	stecaPath = "/measurements.xml"
+	stecaIP   = flag.String("steca-ip", "192.168.50.144", "StecaGrid IP address")
+	stecaPath = flag.String("steca-path", "/measurements.xml", "StecaGrid path")
 	namespace = "stecagrid"
 	tr        = &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -25,7 +26,7 @@ var (
 		Transport: tr,
 		Timeout:   httpClientTimeout,
 	}
-	frequency = 10
+	frequency = flag.Int("frequency", 5, "Polling frequency in seconds")
 
 	// StecaGrid Metrics
 	acPower = prometheus.NewGauge(
@@ -148,12 +149,13 @@ func getXML(url string) ([]byte, error) {
 
 func main() {
 	setupPrometheus()
+	flag.Parse()
 
-	stecaURL := "http://" + stecaIP + stecaPath
+	stecaURL := "http://" + *stecaIP + *stecaPath
 
 	for {
 		if xmlBytes, err := getXML(stecaURL); err != nil {
-			log.Printf("Failed to get XML: %v", err)
+			log.Printf("Failed to fetch the metrics: %v", err)
 		} else {
 			var results stecaGrid
 			if err := xml.Unmarshal(xmlBytes, &results); err != nil {
@@ -170,6 +172,6 @@ func main() {
 			derating.Set(results.Device.Measurements.Measurement[8].Value)
 
 		}
-		time.Sleep(time.Second * time.Duration(frequency))
+		time.Sleep(time.Second * time.Duration(*frequency))
 	}
 }
