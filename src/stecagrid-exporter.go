@@ -161,15 +161,30 @@ func main() {
 			if err := xml.Unmarshal(xmlBytes, &results); err != nil {
 				log.Fatal(err)
 			}
-			acVoltage.Set(results.Device.Measurements.Measurement[0].Value)
-			acCurrent.Set(results.Device.Measurements.Measurement[1].Value)
-			acPower.Set(results.Device.Measurements.Measurement[2].Value)
-			acFrequency.Set(results.Device.Measurements.Measurement[3].Value)
-			dcVoltage.Set(results.Device.Measurements.Measurement[4].Value)
-			dcCurrent.Set(results.Device.Measurements.Measurement[5].Value)
-			temperature.Set(results.Device.Measurements.Measurement[6].Value)
-			gridPower.Set(results.Device.Measurements.Measurement[7].Value)
-			derating.Set(results.Device.Measurements.Measurement[8].Value)
+
+			for k := range results.Device.Measurements.Measurement {
+				t := results.Device.Measurements.Measurement[k].Type
+				switch t {
+				case "AC_Voltage":
+					acVoltage.Set(results.Device.Measurements.Measurement[k].Value)
+				case "AC_Current":
+					acCurrent.Set(results.Device.Measurements.Measurement[k].Value)
+				case "AC_Power":
+					acPower.Set(results.Device.Measurements.Measurement[k].Value)
+				case "AC_Frequency":
+					acFrequency.Set(results.Device.Measurements.Measurement[k].Value)
+				case "DC_Voltage":
+					dcVoltage.Set(results.Device.Measurements.Measurement[k].Value)
+				case "DC_Current":
+					dcCurrent.Set(results.Device.Measurements.Measurement[k].Value)
+				case "Temp":
+					temperature.Set(results.Device.Measurements.Measurement[k].Value)
+				case "GridPower":
+					gridPower.Set(results.Device.Measurements.Measurement[k].Value)
+				case "Derating":
+					derating.Set(results.Device.Measurements.Measurement[k].Value)
+				}
+			}
 
 		}
 		time.Sleep(time.Second * time.Duration(*frequency))
